@@ -18,8 +18,10 @@ const TYPE_DATE = 10
 const globalForPools = globalThis as unknown as { __jsmyadminPools?: Map<string, Pool> }
 const pools = (globalForPools.__jsmyadminPools ??= new Map())
 
+const poolKey = (c: Credentials) => JSON.stringify([c.host, c.port, c.user, c.password, c.database, c.tls])
+
 export function getPool(credentials: Credentials) {
-  const key = JSON.stringify([credentials.host, credentials.port, credentials.user, credentials.password, credentials.database])
+  const key = poolKey(credentials)
   let pool = pools.get(key)
   if (!pool) {
     pool = new Bun.SQL({
@@ -29,6 +31,7 @@ export function getPool(credentials: Credentials) {
       username: credentials.user,
       password: credentials.password,
       database: credentials.database || undefined,
+      tls: credentials.tls || undefined,
       allowPublicKeyRetrieval: true,
       max: 5,
       idleTimeout: 60,
@@ -36,6 +39,14 @@ export function getPool(credentials: Credentials) {
     pools.set(key, pool)
   }
   return pool
+}
+
+/** Drops a pool, e.g. after a failed login, so bad credentials don't pile up. */
+export async function closePool(credentials: Credentials) {
+  const key = poolKey(credentials)
+  const pool = pools.get(key)
+  pools.delete(key)
+  await pool?.close().catch(() => {})
 }
 
 function pad(n: number, size = 2) {
@@ -109,7 +120,11 @@ export async function runScript(
   const connection = await getPool(credentials).reserve()
   const results: StatementResult[] = []
   try {
-    if (options.database) await connection.unsafe(`USE ${quoteIdent(options.database)}`)
+    // Always reset the default schema: pooled connections keep earlier USEs, and
+    // Bun falls back to `mysql`. information_schema rejects writes, so unqualified
+    // statements without a chosen database fail instead of touching a system schema.
+    const database = options.database || credentials.database || "information_schema"
+    await connection.unsafe(`USE ${quoteIdent(database)}`)
     for (const statement of statements) {
       const start = performance.now()
       try {

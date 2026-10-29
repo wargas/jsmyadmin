@@ -8,6 +8,7 @@ export type Credentials = {
   password: string
   /** Optional default database for the connection. */
   database?: string
+  tls?: boolean
 }
 
 export const SESSION_COOKIE = "jsmyadmin_session"
