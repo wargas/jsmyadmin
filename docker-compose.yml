@@ -1,0 +1,16 @@
+services:
+  jsmyadmin:
+    build: .
+    image: jsmyadmin
+    restart: unless-stopped
+    ports:
+      # Bound to localhost: put a TLS reverse proxy (Caddy, Nginx…) in front.
+      - "127.0.0.1:3000:3000"
+    environment:
+      # Required: key that encrypts the session cookie (e.g. `openssl rand -base64 32`).
+      SESSION_SECRET: ${SESSION_SECRET:?defina SESSION_SECRET no .env}
+      # Optional: comma-separated MySQL hosts allowed on the login screen.
+      MYSQL_ALLOWED_HOSTS: ${MYSQL_ALLOWED_HOSTS:-}
+    extra_hosts:
+      # Lets the login use "host.docker.internal" to reach a MySQL on the VPS itself.
+      - "host.docker.internal:host-gateway"
